@@ -15,9 +15,20 @@ Section Logic.
 
 Variables A B C : Prop.
 
+Locate "<->".
+Print iff.
+Locate "~".
+Print not.
+
+Definition falseIsNotTrue : False -> (~ True) := 
+  fun f t => f.
+
+Definition notTrueIsFalse : (~ True) -> False :=
+  fun nt : ~ True => nt I.
+
 (** * Exercise *)
-Definition notTrue_iff_False : (~ True) <-> False
-:= replace_with_your_solution_here.
+Definition notTrue_iff_False : (~ True) <-> False :=
+  conj (fun nt : ~ True => nt I) (fun f : False => fun t : True => f).
 
 (* Hint 1: use [Locate "<->".] and [Print iff.] commands to understand better
 the type above. *)
@@ -28,14 +39,12 @@ use `match <term> in <type> with ... end` instead of `match <term> with ... end`
 
 
 (** * Exercise: double negation elimination works for `False` *)
-Definition dne_False : ~ ~ False -> False
-:= replace_with_your_solution_here.
-
+Definition dne_False : ~ ~ False -> False :=
+  replace_with_your_solution_here.
 
 (** * Exercise: double negation elimination works for `True` too. *)
-Definition dne_True : ~ ~ True -> True
-:= replace_with_your_solution_here.
-
+Definition dne_True : ~ ~ True -> True :=
+  fun _ => I.
 
 (** * Exercise: Weak Peirce's law
 Peirce's law (https://en.wikipedia.org/wiki/Peirce%27s_law) is equivalent to
@@ -51,19 +60,32 @@ Definition weak_Peirce : ((((A -> B) -> A) -> A) -> B) -> B
 Variable T : Type.
 Variable P Q : T -> Prop.
 
+Locate "exists".
+Print ex.
+
 (** * Exercise: existential introduction rule *)
 Definition exists_introduction :
   forall (x : T), P x -> (exists (x : T), P x)
-:= replace_with_your_solution_here.
+:= fun x px => ex_intro P x px.
 
 (** * Exercise: Frobenius rule: existential quantifiers and conjunctions commute *)
 Definition frobenius_rule :
   (exists x, A /\ P x) <-> A /\ (exists x, P x)
-:= replace_with_your_solution_here.
+:=
+  conj (
+    fun x_apx : exists x, A /\ P x =>
+      match x_apx with
+      | ex_intro x (conj a px) => conj a (ex_intro P x px)
+      end
+  ) (
+    fun ax_px : A /\ (exists x, P x) =>
+      match ax_px with
+      | conj a (ex_intro x px) => ex_intro (fun x : T => A /\ P x) x (conj a px)
+      end
+  ).
 
 
 End Logic.
-
 
 
 Section Equality.
@@ -72,29 +94,39 @@ Variables A B C D : Type.
 
 (** * Exercise *)
 Definition eq1 : true = (true && true)
-:= replace_with_your_solution_here.
+:= eq_refl : true = (true && true).
 
 (** * Exercise *)
 Definition eq2 : 42 = (if true then 21 + 21 else 239)
-:= replace_with_your_solution_here.
+:= eq_refl : 42 = if true then 21 + 21 else 239.
 
 (** * Exercise *)
 Definition LEM_decidable :
   forall (b : bool), b || ~~ b = true
-:= replace_with_your_solution_here.
+:=
+  fun b =>
+    match b with
+    | true  => eq_refl : true || ~~ true = true
+    | false => eq_refl : false || ~~ false = true
+    end.
 
 (** * Exercise *)
 Definition if_neg :
-  forall (A : Type) (b : bool) (vT vF: A),
+  forall (A : Type) (b : bool) (vT vF : A),
     (if ~~ b then vT else vF) = if b then vF else vT
-:= replace_with_your_solution_here.
+:=
+  fun _ b vt vf =>
+    match b with
+    | true  => eq_refl : (if ~~ true then vt else vf)  = (if true then vf else vt)
+    | false => eq_refl : (if ~~ false then vt else vf) = (if false then vf else vt)
+    end.
 
 (** * Exercise : associativity of function composition *)
 (** [\o] is a notation for function composition in MathComp, prove that it's associative *)
 
 Definition compA (f : A -> B) (g : B -> C) (h : C -> D) :
   (h \o g) \o f = h \o (g \o f)
-:= replace_with_your_solution_here.
+:= eq_refl : (h \o g) \o f = h \o (g \o f).
 
 
 (** [=1] stands for extensional equality on unary functions,
@@ -106,29 +138,45 @@ Definition compA (f : A -> B) (g : B -> C) (h : C -> D) :
 (** * Exercise: Reflexivity *)
 Definition eqext_refl :
   forall (f : A -> B), f =1 f
-:= replace_with_your_solution_here.
+:= fun f a => eq_refl : f a = f a.
 
 (** * Exercise: Symmetry *)
 Definition eqext_sym :
   forall (f g : A -> B), f =1 g -> g =1 f
-:= replace_with_your_solution_here.
+:=
+  fun f g fg a =>
+    match fg a in (_ = ga) return (ga = f a) with
+    | eq_refl => eq_refl : f a = f a
+    end.
 
 (** * Exercise: Transitivity *)
 Definition eqext_trans :
   forall (f g h : A -> B), f =1 g -> g =1 h -> f =1 h
-:= replace_with_your_solution_here.
+:=
+  fun f g h fg gh a =>
+    match gh a in (_ = ha) return (f a = ha) with
+    | eq_refl => fg a
+    end.
 
 (** * Exercise: left congruence *)
 Definition eq_compl :
   forall (f g : A -> B) (h : B -> C),
     f =1 g -> h \o f =1 h \o g
-:= replace_with_your_solution_here.
+:=
+  fun f g h fg a =>
+    match fg a in (_ = ga) return (h (f a) = h ga) with
+    | eq_refl => eq_refl : h (f a) = h (f a)
+    end.
 
 (** * Exercise: right congruence *)
 Definition eq_compr :
   forall (f g : B -> C) (h : A -> B),
     f =1 g -> f \o h =1 g \o h
-:= replace_with_your_solution_here.
+:=
+  fun f g h fg a =>
+    match fg (h a) in (_ = ga) return (f (h a) = ga) with
+    | eq_refl => eq_refl : f (h a) = f (h a)
+    end.
 
 End Equality.
 

@@ -18,8 +18,8 @@ multiplications *)
 Inductive expr : Type :=
 | Const of nat
 | Plus of expr & expr
-| Minus of ...
-| Mult of ...
+| Minus of expr & expr
+| Mult of expr & expr
 .
 
 (** Let us define a special notation for our language.
@@ -45,8 +45,8 @@ Notation "x + y" := (Plus x y) (in custom expr at level 2, left associativity).
 (* Define notations for subtraction and multiplication.
    Hint: lower level means higher priority.
    Your notations should start with `in custom expr` as above. *)
-Notation "x - y" := ...
-Notation "x * y" := ...
+Notation "x - y" := (Minus x y) (in custom expr at level 2, left associativity).
+Notation "x * y" := (Mult x y) (in custom expr at level 1, left associativity).
 
 (** Here is how we write Plus (Const 0) (Plus (Const 1) (Const 2)) *)
 Check [[
@@ -76,7 +76,12 @@ Check [[
 Basically, the semantics of the expression language should be the same as
 the corresponding Coq functions `addn`, `subn`, `muln`. *)
 Fixpoint eval (e : expr) : nat :=
-  ...
+  match e with
+  | Const n   => n
+  | Plus x y  => addn (eval x) (eval y)
+  | Minus x y => subn (eval x) (eval y)
+  | Mult x y  => muln (eval x) (eval y)
+  end.
 
 (** Some unit tests *)
 (** We haven't discussed in depth what `erefl` means yet.
@@ -87,8 +92,6 @@ Check erefl : eval [[ 0 + (2 - 1) ]] = 1.
 Check erefl : eval [[ (0 + 1) + 2 ]] = 3.
 Check erefl : eval [[ 2 + 2 * 2 ]] = 6.
 Check erefl : eval [[ (2 + 2) * 2 ]] = 8.
-...
-
 
 (** * Compiling arithmetic expressions to a stack language *)
 
@@ -111,7 +114,7 @@ For example, this is one possible way to start:
 
 Notation " << n >> " := (Push n) (at level 0, n constr).
 *)
-
+Notation " << n >> " := (Push n) (at level 0, n constr).
 
 (* Feel free to either define your own datatype to represent lists or reuse the
 `seq` datatype provided by Mathcomp (this is why this file imports the `seq`
@@ -136,33 +139,63 @@ And the type of stacks like so:
     Definition stack := seq nat.
 *)
 
+Definition prog := seq instr.
+
+Definition stack := seq nat.
+
 
 (** The [run] function is an interpreter for the stack language. It takes a
  program (list of instructions) and the current stack, and processes the program
  instruction-by-instruction, returning the final stack. *)
 Fixpoint run (p : prog) (s : stack) : stack :=
-  ...
+  match p with
+  | Push n :: ins => run ins (n :: s)
+  | Add :: ins    => run ins (if s is (x :: y :: tail) then addn y x :: tail else s)
+  | Sub :: ins    => run ins (if s is (x :: y :: tail) then subn y x :: tail else s)
+  | Mul :: ins    => run ins (if s is (x :: y :: tail) then muln y x :: tail else s)
+  | [::]          => s
+  end.
 
 (** Unit tests: *)
-Check erefl :
-  run [:: ... stack-program ...] [::] = [:: ... stack-of-numbers ...].
-...
+Compute run [:: Push 0; Push 1; Add] [::].
+Compute run [:: Push 1; Push 4; Sub] [::].
+Check erefl : run [:: Push 0; Push 1; Add] [::] = [:: 1].
+Check erefl : run [:: Push 0] [::] = [:: 0].
+Check erefl : run [:: Push 0; Add] [::] = [:: 0].
+Check erefl : run [:: Push 5; Push 3; Sub] [::] = [:: 2].
+Check erefl : run [:: Push 5; Push 3; Sub; Push 1; Sub] [::] = [:: 1].
 
 
 (** Now, implement a compiler from "high-level" expressions to "low-level" stack
 programs and do some unit tests. *)
 Fixpoint compile (e : expr) : prog :=
-  ...
+  match e with
+  | Const n   => [:: Push n]
+  | Plus x y  => (compile x) ++ (compile y) ++ [:: Add]
+  | Minus x y => (compile x) ++ (compile y) ++ [:: Sub]
+  | Mult x y  => (compile x) ++ (compile y) ++ [:: Mul]
+  end.
 
 (** Do some unit tests *)
-Check erefl :
-  compile [[ ... expression ... ]] = [:: ... stack-program ].
-...
+Definition exp0 := [[ 100 - 4 * 6 ]].
+Definition exp1 := [[ (100 - 4) * 6 ]].
+
+Compute compile exp0.
+Compute run (compile exp0).
+Compute compile exp1.
+Compute run (compile exp1).
+
+Definition exp2 := [[ 0 - 4 ]].
+
+Check erefl : compile exp2 = [:: Push 0; Push 4; Sub].
+Check erefl : run (compile exp2) [::] = [:: eval exp2].
+
 (* Some ideas for unit tests:
   - check that `run (compile e) [::] = [:: eval e]`, where `e` is an arbitrary expression;
   - check that `compile` is an injective function
 *)
-
+Variable e : expr.
+(* Check erefl : run (compile e) [::] = [:: eval e]. *)
 
 (** Optional exercise: decompiler *)
 
@@ -170,8 +203,23 @@ Check erefl :
 expression *)
 (* Hint: you might want to introduce a recursive helper function `decompile'` to
  reuse it for `decompile`. *)
+Fixpoint decompile' (p : prog) (es : seq expr): option expr :=
+  match p with
+  | Push x :: ps => decompile' ps (Const x :: es)
+  | Add :: ps    => decompile' ps (if es is (x :: y :: tail) then Plus y x :: tail else es)
+  | Sub :: ps    => decompile' ps (if es is (x :: y :: tail) then Minus y x :: tail else es)
+  | Mul :: ps    => decompile' ps (if es is (x :: y :: tail) then Mult y x :: tail else es)
+  | [::]         => if es is (r :: [::]) then Some r else None
+  end.
+
 Definition decompile (p : prog) : option expr :=
-  ...
+  decompile' p [::].
+
+
+Definition prg0 := [:: << 100 >>; << 4 >>; << 6 >>; Mul; Sub].
+
+Compute decompile prg0.
+Check erefl : decompile (compile exp0) = Some exp0.
 
 (** Unit tests *)
 Check erefl :
